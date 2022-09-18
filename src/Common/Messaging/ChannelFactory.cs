@@ -58,7 +58,7 @@ public sealed class ChannelFactory : IChannelFactory
     }
 }
 
-public interface IChannelFactory
+public interface IChannelFactory : IDisposable
 {
     IModel GetChannel();
     void ReturnChannel(IModel channel);
