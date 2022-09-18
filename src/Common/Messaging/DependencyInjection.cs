@@ -26,12 +26,14 @@ public static class SetupDependencyInjection
         ExchangeDefinition exchangeDef)
     {
         var channelFactory = serviceProvider.GetRequiredService<IChannelFactory>();
-        using var channel = channelFactory.CreateChannel();
-        channel.ExchangeDeclare(
-            exchangeDef.Name,
-            exchangeDef.GetExchangeType(),
-            exchangeDef.Durable,
-            exchangeDef.AutoDelete);
+        channelFactory.WithChannel(channel =>
+        {
+            channel.ExchangeDeclare(
+                exchangeDef.Name,
+                exchangeDef.GetExchangeType(),
+                exchangeDef.Durable,
+                exchangeDef.AutoDelete);
+        });
         return serviceProvider;
     }
 }
