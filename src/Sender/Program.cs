@@ -1,5 +1,7 @@
-﻿using Common.Messaging;
+﻿using Common;
+using Common.Messaging;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
 var host = Host.CreateDefaultBuilder(args)
@@ -14,6 +16,7 @@ var host = Host.CreateDefaultBuilder(args)
     .ConfigureServices((hostContext, serviceCollection) =>
     {
         serviceCollection.AddRabbitMq(hostContext.Configuration);
+        serviceCollection.Configure<SenderSettings>(hostContext.Configuration.GetSection(nameof(SenderSettings)));
     })
     .Build();
 
