@@ -1,21 +1,20 @@
 ﻿using System.Text.Json;
+using Domain.Events;
 
-namespace Domain.Outbox;
+namespace Common.Outbox;
 
 public sealed class OutboxEvent
 {
     // for EF Core
     private OutboxEvent()
-    {
-        
-    }
+    { }
 
-    public OutboxEvent(object @event)
+    public OutboxEvent(DomainEvent @event)
     {
         Id = Guid.NewGuid();
         EventDate = DateTime.UtcNow;
         EventKey = @event.GetType().Name;
-        EventData = JsonSerializer.Serialize(@event);
+        EventData = JsonSerializer.Serialize(@event as object);
     }
 
     public Guid Id { get; protected set; }

@@ -2,7 +2,7 @@
 
 namespace Domain.Events;
 
-public sealed class SomeEntityCreated : BaseEvent
+public sealed class SomeEntityCreated : DomainEvent
 {
     public SomeEntityCreated(SomeEntity someEntity)
     {
