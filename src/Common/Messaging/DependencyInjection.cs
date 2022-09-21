@@ -8,17 +8,9 @@ public static class SetupDependencyInjection
 {
     public static IServiceCollection AddRabbitMq(this IServiceCollection services, IConfiguration configuration)
     {
-        var rabbitMqSettings = configuration.GetRequiredSection("RabbitMq").Get<RabbitMqSettings>();
-        var connectionFactory = new ConnectionFactory
-        {
-            HostName = rabbitMqSettings.HostName,
-            UserName = rabbitMqSettings.UserName,
-            Password = rabbitMqSettings.Password,
-            DispatchConsumersAsync = true,
-            AutomaticRecoveryEnabled = true
-        };
-        var connection = connectionFactory.CreateConnection();
-        services.AddSingleton<IChannelFactory>(new ChannelFactory(connection));
+        services.Configure<RabbitMqSettings>(configuration.GetSection(nameof(SenderSettings)));
+        // .Configure<>(hostContext.Configuration.GetSection(nameof(SenderSettings)))
+        services.AddSingleton<IChannelFactory>();
         return services;
     }
 

@@ -5,15 +5,30 @@ namespace Common.Messaging;
 
 public sealed class ChannelFactory : IChannelFactory
 {
-    private readonly IConnection _connection;
-    private readonly ObjectPool<IModel> _channelPool;
+    private readonly ConnectionFactory _connectionFactory;
+    private IConnection _connection;
+    private ObjectPool<IModel> _channelPool;
 
-    public ChannelFactory(IConnection connection)
+    public ChannelFactory(RabbitMqSettings rabbitMqSettings)
     {
+        _connectionFactory = new ConnectionFactory
+        {
+            HostName = rabbitMqSettings.HostName,
+            UserName = rabbitMqSettings.UserName,
+            Password = rabbitMqSettings.Password,
+            DispatchConsumersAsync = true,
+            AutomaticRecoveryEnabled = true
+        };
+        var connection = _connectionFactory.CreateConnection();
         _connection = connection;
+        _channelPool = CreateChannelPool(_connection);
+    }
+
+    private static ObjectPool<IModel> CreateChannelPool(IConnection connection)
+    {
         // Using object pool provider to get an instance of DisposableObjectPool that is internal and sealed
-        var objectPoolProvider = new DefaultObjectPoolProvider();
-        _channelPool = objectPoolProvider.Create(new ChannelPooledObjectPolicy(_connection));
+        var objectPoolProvider = new DefaultObjectPoolProvider {MaximumRetained = Environment.ProcessorCount * 10};
+         return objectPoolProvider.Create(new ChannelPooledObjectPolicy(connection));
     }
 
     /// <summary>
@@ -22,7 +37,11 @@ public sealed class ChannelFactory : IChannelFactory
     /// <returns>A channel</returns>
     public IModel GetChannel()
     {
-        return _channelPool.Get();
+        CheckAndRecoverConnection();
+        var channel = _channelPool.Get();
+        if (channel.IsOpen) return channel;
+        channel.Dispose();
+        return GetChannel();
     }
 
     /// <summary>
@@ -31,7 +50,20 @@ public sealed class ChannelFactory : IChannelFactory
     /// <param name="channel">Channel</param>
     public void ReturnChannel(IModel channel)
     {
-        _channelPool.Return(channel);
+        CheckAndRecoverConnection();
+
+        if (channel.IsClosed)
+            channel.Dispose();
+        else
+            _channelPool.Return(channel);
+    }
+
+    private void CheckAndRecoverConnection()
+    {
+        if (_connection.IsOpen) return;
+        _connection.Dispose();
+        _connection = _connectionFactory.CreateConnection();
+        _channelPool = CreateChannelPool(_connection);
     }
 
     /// <summary>
@@ -40,14 +72,49 @@ public sealed class ChannelFactory : IChannelFactory
     /// <param name="channelAction">Action using the channel</param>
     public void WithChannel(Action<IModel> channelAction)
     {
-        var channel = _channelPool.Get();
+        var channel = GetChannel();
         try
         {
             channelAction(channel);
         }
         finally
         {
-            _channelPool.Return(channel);
+            ReturnChannel(channel);
+        }
+    }
+
+    /// <summary>
+    /// Uses a channel from the pool to execute a func.
+    /// </summary>
+    /// <param name="channelFunc">Func using the channel</param>
+    public T WithChannel<T>(Func<IModel, T> channelFunc)
+    {
+        var channel = GetChannel();
+        try
+        {
+            var result = channelFunc(channel);
+            return result;
+        }
+        finally
+        {
+            ReturnChannel(channel);
+        }
+    }
+
+    /// <summary>
+    /// Uses a channel from the pool to execute an asynchronous func.
+    /// </summary>
+    /// <param name="channelFunc">Func using the channel</param>
+    public async Task WithChannel(Func<IModel, Task> channelFunc)
+    {
+        var channel = GetChannel();
+        try
+        {
+            await channelFunc(channel);
+        }
+        finally
+        {
+            ReturnChannel(channel);
         }
     }
 
@@ -63,6 +130,8 @@ public interface IChannelFactory : IDisposable
     IModel GetChannel();
     void ReturnChannel(IModel channel);
     void WithChannel(Action<IModel> channelAction);
+    T WithChannel<T>(Func<IModel, T> channelFunc);
+    Task WithChannel(Func<IModel, Task> channelFunc);
 }
 
 internal sealed class ChannelPooledObjectPolicy : PooledObjectPolicy<IModel>
