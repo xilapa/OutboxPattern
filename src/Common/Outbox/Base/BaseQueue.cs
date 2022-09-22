@@ -1,6 +1,6 @@
 ﻿using System.Threading.Channels;
 
-namespace Common.Outbox;
+namespace Common.Outbox.Base;
 
 public abstract class BaseQueue : IBaseQueue
 {
@@ -16,10 +16,10 @@ public abstract class BaseQueue : IBaseQueue
         _queue = Channel.CreateBounded<OutboxEvent>(boundedChannelOptions);
     }
 
-    public async Task Enqueue(OutboxEvent @event, CancellationToken cancellationToken) =>
+    public async ValueTask Enqueue(OutboxEvent @event, CancellationToken cancellationToken) =>
         await _queue.Writer.WriteAsync(@event, cancellationToken);
 
-    public async Task<OutboxEvent> Dequeue(CancellationToken cancellationToken) =>
+    public async ValueTask<OutboxEvent> Dequeue(CancellationToken cancellationToken) =>
         await _queue.Reader.ReadAsync(cancellationToken);
 
     public IAsyncEnumerable<OutboxEvent> GetAllAsync(CancellationToken cancellationToken) =>
@@ -28,12 +28,12 @@ public abstract class BaseQueue : IBaseQueue
 
 public interface IBaseQueueWriter
 {
-    Task Enqueue(OutboxEvent @event, CancellationToken cancellationToken);
+    ValueTask Enqueue(OutboxEvent @event, CancellationToken cancellationToken);
 }
 
 public interface IBaseQueueReader
 {
-    Task<OutboxEvent> Dequeue(CancellationToken cancellationToken);
+    ValueTask<OutboxEvent> Dequeue(CancellationToken cancellationToken);
     IAsyncEnumerable<OutboxEvent> GetAllAsync(CancellationToken cancellationToken);
 }
 
