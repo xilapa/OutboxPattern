@@ -10,6 +10,6 @@ public sealed class SomeEntityCreated : DomainEvent
         CreatedEntityName = someEntity.Name;
     }
 
-    public Guid CreatedEntityId { get; protected set; }
-    public string CreatedEntityName { get; protected set; }
+    public Guid CreatedEntityId { get; private set; }
+    public string CreatedEntityName { get; private set; }
 }
