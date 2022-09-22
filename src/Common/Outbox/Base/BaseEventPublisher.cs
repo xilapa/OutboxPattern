@@ -1,6 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using Common.Messaging;
-using Common.Outbox.EventRetrier;
+using Common.Outbox.EventRetry;
 using Common.Outbox.EventSaver;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
