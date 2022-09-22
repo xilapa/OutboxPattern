@@ -1,5 +1,6 @@
 ﻿using Common.Outbox;
 using Common.Outbox.EventPublisher;
+using Common.Outbox.Extensions;
 using Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -8,7 +9,7 @@ namespace Common.Persistence;
 
 public sealed class Context : DbContext
 {
-    private readonly IQueueWriter _queueWriter;
+    private readonly IOutboxEventQueueWriter _outboxEventQueueWriter;
     private readonly SenderSettings _senderSettings;
 
     // ctor for migration generation
@@ -21,15 +22,10 @@ public sealed class Context : DbContext
     //     };
     // }
 
-    public Context(IOptionsSnapshot<SenderSettings> senderSettings, IQueueWriter queueWriter)
+    public Context(IOptions<SenderSettings> senderSettings, IOutboxEventQueueWriter outboxEventQueueWriter)
     {
-        _queueWriter = queueWriter;
+        _outboxEventQueueWriter = outboxEventQueueWriter;
         _senderSettings = senderSettings.Value;
-    }
-
-    public Context(SenderSettings senderSettings)
-    {
-        _senderSettings = senderSettings;
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -45,11 +41,11 @@ public sealed class Context : DbContext
         optionsBuilder.UseNpgsql(_senderSettings.DatabaseConnectionString);
     }
 
-    public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = new CancellationToken())
+    public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = new ())
     {
         var outboxEvents =  this.GetOutboxEventsAndAddToTransaction();
         var result = await base.SaveChangesAsync(cancellationToken);
-        await _queueWriter.EnqueueToOutbox(outboxEvents, cancellationToken);
+        await _outboxEventQueueWriter.EnqueueToOutbox(outboxEvents, cancellationToken);
         return result;
     }
 

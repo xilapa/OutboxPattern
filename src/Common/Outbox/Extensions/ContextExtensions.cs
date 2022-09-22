@@ -1,7 +1,7 @@
 ﻿using Common.Persistence;
 using Domain.Entities;
 
-namespace Common.Outbox;
+namespace Common.Outbox.Extensions;
 
 public static class ContextExtensions
 {
