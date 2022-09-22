@@ -33,6 +33,8 @@ public sealed class Context : DbContext
         base.OnModelCreating(modelBuilder);
         modelBuilder.Entity<SomeEntity>()
             .Ignore(_ => _.DomainEvents);
+        modelBuilder.Entity<OutboxEvent>()
+            .Ignore(_ => _.CurrentRetries);
     }
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
