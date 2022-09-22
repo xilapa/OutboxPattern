@@ -2,7 +2,7 @@
 
 namespace Common.Outbox;
 
-public abstract class BaseQueue : IQueueWriter, IQueueReader
+public abstract class BaseQueue : IBaseQueue
 {
     private readonly Channel<OutboxEvent> _queue;
 
@@ -21,14 +21,21 @@ public abstract class BaseQueue : IQueueWriter, IQueueReader
 
     public async Task<OutboxEvent> Dequeue(CancellationToken cancellationToken) =>
         await _queue.Reader.ReadAsync(cancellationToken);
+
+    public IAsyncEnumerable<OutboxEvent> GetAllAsync(CancellationToken cancellationToken) =>
+        _queue.Reader.ReadAllAsync(cancellationToken);
 }
 
-public interface IQueueWriter
+public interface IBaseQueueWriter
 {
     Task Enqueue(OutboxEvent @event, CancellationToken cancellationToken);
 }
 
-public interface IQueueReader
+public interface IBaseQueueReader
 {
     Task<OutboxEvent> Dequeue(CancellationToken cancellationToken);
+    IAsyncEnumerable<OutboxEvent> GetAllAsync(CancellationToken cancellationToken);
 }
+
+public interface IBaseQueue: IBaseQueueWriter, IBaseQueueReader
+{ }
