@@ -7,7 +7,7 @@ namespace Common.Messaging;
 public sealed class ChannelFactory : IChannelFactory
 {
     private readonly ConnectionFactory _connectionFactory;
-    private IConnection _connection;
+    private IConnection? _connection;
     private ObjectPool<IModel> _channelPool;
 
     public ChannelFactory(IOptions<RabbitMqSettings> rabbitMqSettingsOpt)
@@ -62,8 +62,8 @@ public sealed class ChannelFactory : IChannelFactory
 
     private void CheckAndRecoverConnection()
     {
-        if (_connection.IsOpen) return;
-        _connection.Dispose();
+        if (_connection?.IsOpen is true) return;
+        _connection?.Dispose();
         _connection = _connectionFactory.CreateConnection();
         _channelPool = CreateChannelPool(_connection);
     }
@@ -122,8 +122,8 @@ public sealed class ChannelFactory : IChannelFactory
 
     public void Dispose()
     {
-        _connection.Close();
-        _connection.Dispose();
+        _connection?.Close();
+        _connection?.Dispose();
     }
 }
 
