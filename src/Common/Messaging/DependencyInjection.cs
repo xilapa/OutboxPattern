@@ -8,9 +8,8 @@ public static class SetupDependencyInjection
 {
     public static IServiceCollection AddRabbitMq(this IServiceCollection services, IConfiguration configuration)
     {
-        services.Configure<RabbitMqSettings>(configuration.GetSection(nameof(SenderSettings)));
-        // .Configure<>(hostContext.Configuration.GetSection(nameof(SenderSettings)))
-        services.AddSingleton<IChannelFactory>();
+        services.Configure<RabbitMqSettings>(configuration.GetSection("RabbitMq"));
+        services.AddSingleton<IChannelFactory,ChannelFactory>();
         return services;
     }
 

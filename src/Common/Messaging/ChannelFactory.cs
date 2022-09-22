@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.ObjectPool;
+using Microsoft.Extensions.Options;
 using RabbitMQ.Client;
 
 namespace Common.Messaging;
@@ -9,8 +10,9 @@ public sealed class ChannelFactory : IChannelFactory
     private IConnection _connection;
     private ObjectPool<IModel> _channelPool;
 
-    public ChannelFactory(RabbitMqSettings rabbitMqSettings)
+    public ChannelFactory(IOptions<RabbitMqSettings> rabbitMqSettingsOpt)
     {
+        var rabbitMqSettings = rabbitMqSettingsOpt.Value;
         _connectionFactory = new ConnectionFactory
         {
             HostName = rabbitMqSettings.HostName,
