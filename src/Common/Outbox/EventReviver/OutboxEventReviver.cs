@@ -88,7 +88,8 @@ public sealed class OutboxEventReviver : BackgroundService
         await Task.Delay(5_000, ctx);
         while (!ctx.IsCancellationRequested)
         {
-            var command = new CommandDefinition(CleanOldEventsQuery, cancellationToken: ctx);
+            var command = new CommandDefinition(CleanOldEventsQuery, new {CurrentDate = DateTime.UtcNow},
+                cancellationToken: ctx);
 
             await _databaseConnection.WithConnection(conn => conn.ExecuteAsync(command));
 
@@ -121,7 +122,7 @@ public sealed class OutboxEventReviver : BackgroundService
                         LIMIT 10000
                        ";
 
-    private const string CleanOldEventsQuery = @"DELETE FROM ""OutboxEvents"" WHERE ""ExpireAt"" < @CurrentDate;";
+    private const string CleanOldEventsQuery = @"DELETE FROM ""OutboxEvents"" WHERE ""ExpirationDate"" < @CurrentDate;";
 
     #endregion
 }
