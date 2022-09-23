@@ -1,11 +1,15 @@
-﻿using Common.Outbox.Base;
+﻿using System.Threading.Channels;
+using Common.Outbox.Base;
+using Microsoft.Extensions.Logging;
 
 namespace Common.Outbox.EventRetry;
 
 public sealed class OutboxEventRetryQueue : BaseQueue, IOutboxEventRetryQueue
 {
     // todo: make capacity configurable
-    public OutboxEventRetryQueue() : base(2400)
+    public OutboxEventRetryQueue(ILogger<OutboxEventRetryQueue> logger)
+    // If the channel is full, drop the message. It'll be re-queued later by the EventReviver
+        : base(20_000, logger, BoundedChannelFullMode.DropWrite)
     { }
 }
 

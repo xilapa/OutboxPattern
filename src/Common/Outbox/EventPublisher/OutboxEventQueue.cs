@@ -1,11 +1,15 @@
-﻿using Common.Outbox.Base;
+﻿using System.Threading.Channels;
+using Common.Outbox.Base;
+using Microsoft.Extensions.Logging;
 
 namespace Common.Outbox.EventPublisher;
 
 public sealed class OutboxEventQueue : BaseQueue, IOutboxEventQueueWriter, IOutboxEventQueueReader
 {
     // todo: make capacity configurable
-    public OutboxEventQueue() : base(1200)
+    public OutboxEventQueue(ILogger<OutboxEventQueue> logger)
+    // If the channel is full, drop the message. It'll be re-queued later by the EventReviver
+        : base(10_000, logger, BoundedChannelFullMode.DropWrite)
     { }
 }
 
