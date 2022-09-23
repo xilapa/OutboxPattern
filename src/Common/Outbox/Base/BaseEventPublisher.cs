@@ -44,7 +44,6 @@ public abstract class BaseEventPublisher : BackgroundService
             channel.ConfirmSelect();
             channel.BasicAcks += HandleAcks;
             channel.BasicNacks += HandleNacks;
-            channel.ModelShutdown += HandleShutdown;
             return channel;
         }
         catch (Exception e)
@@ -84,13 +83,4 @@ public abstract class BaseEventPublisher : BackgroundService
     }
 
     protected abstract void HandleNacks(object? channel, BasicNackEventArgs eventArgs);
-
-    private void HandleShutdown(object? channel, ShutdownEventArgs eventArgs)
-    {
-        if (channel is not IModel channelCasted) throw new Exception("It should be a channel");
-        channelCasted.BasicAcks -= HandleAcks;
-        channelCasted.BasicNacks -= HandleNacks;
-        channelCasted.ModelShutdown -= HandleShutdown;
-        RedirectMessages(RetryQueue).AsTask().Wait(_ctx);
-    }
 }
