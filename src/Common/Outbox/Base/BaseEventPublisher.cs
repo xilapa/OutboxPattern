@@ -39,10 +39,13 @@ public abstract class BaseEventPublisher : BackgroundService
         _ctx = ctx;
     }
 
-    protected IModel? GetConfiguredChannel()
+    protected IModel? GetConfiguredChannel(IModel? currentChannel = null)
     {
         try
         {
+            if (currentChannel is not null)
+                TryDisposeChannel(currentChannel);
+
             var channel = _channelFactory.GetChannel();
             channel.ConfirmSelect();
             channel.BasicAcks += HandleAcks;
@@ -51,12 +54,25 @@ public abstract class BaseEventPublisher : BackgroundService
         }
         catch (Exception e)
         {
-            _logger.LogCritical(e, "Cannot connect to broker");
+            _logger.LogCritical(e, "Cannot get a new channel");
             return null;
         }
     }
 
-    protected async ValueTask RedirectMessages(IBaseQueueWriter destinationQueue, OutboxEvent? currentEvent = null)
+    private void TryDisposeChannel(IModel channel)
+    {
+        try
+        {
+            channel.Close();
+            channel.Dispose();
+        }
+        catch (Exception e)
+        {
+            _logger.LogCritical(e, "{CurrentTime}: Error on channel disposal", DateTime.UtcNow);
+        }
+    }
+
+    protected async ValueTask RedirectMessagesDueFailure(IBaseQueueWriter destinationQueue, OutboxEvent? currentEvent = null)
     {
         // Take an snapshot of the keys
         var allKeys = EventsPendingConfirmation.Keys.ToArray();
