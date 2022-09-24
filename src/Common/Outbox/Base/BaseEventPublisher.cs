@@ -13,7 +13,9 @@ public abstract class BaseEventPublisher : BackgroundService
 {
     protected readonly IOutboxEventRetryQueue RetryQueue;
     protected readonly IOutboxEventSaveQueue SaveQueue;
+    protected IModel? Channel;
     protected readonly ConcurrentDictionary<PublishingKey, OutboxEvent> EventsPendingConfirmation;
+
     private readonly IChannelFactory _channelFactory;
     private readonly ILogger _logger;
     private CancellationToken _ctx;
@@ -29,9 +31,10 @@ public abstract class BaseEventPublisher : BackgroundService
         SaveQueue = saveQueue;
         _logger = logger;
         EventsPendingConfirmation = new ConcurrentDictionary<PublishingKey, OutboxEvent>();
+        Channel = GetConfiguredChannel();
     }
 
-    protected void SetCancelationTokenOnBaseClass(CancellationToken ctx)
+    protected void SetCancellationTokenOnBaseClass(CancellationToken ctx)
     {
         _ctx = ctx;
     }
@@ -73,7 +76,7 @@ public abstract class BaseEventPublisher : BackgroundService
             await destinationQueue.Enqueue(currentEvent, _ctx);
     }
 
-    private void HandleAcks(object? channel, BasicAckEventArgs eventArgs)
+    protected void HandleAcks(object? channel, BasicAckEventArgs eventArgs)
     {
         if (channel is not IModel channelCasted) throw new Exception("It should be a channel");
         var eventFound = EventsPendingConfirmation.TryRemove(new PublishingKey(channelCasted.ChannelNumber, eventArgs.DeliveryTag), out var @event);
