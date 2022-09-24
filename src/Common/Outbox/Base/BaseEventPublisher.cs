@@ -84,15 +84,15 @@ public abstract class BaseEventPublisher : BackgroundService
             if (!removed) continue;
             // If the removed event is the current, continue
             if (eventFromDeadChannel!.Id.Equals(currentEvent?.Id)) continue;
-            await destinationQueue.Enqueue(eventFromDeadChannel, _ctx);
+            await destinationQueue.TryEnqueue(eventFromDeadChannel, _ctx);
         }
 
         // Redirect the current event
         if (currentEvent is not null)
-            await destinationQueue.Enqueue(currentEvent, _ctx);
+            await destinationQueue.TryEnqueue(currentEvent, _ctx);
     }
 
-    protected void HandleAcks(object? channel, BasicAckEventArgs eventArgs)
+    private void HandleAcks(object? channel, BasicAckEventArgs eventArgs)
     {
         if (channel is not IModel channelCasted) throw new Exception("It should be a channel");
         var eventFound = EventsPendingConfirmation.TryRemove(new PublishingKey(channelCasted.ChannelNumber, eventArgs.DeliveryTag), out var @event);
