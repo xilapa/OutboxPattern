@@ -1,5 +1,4 @@
-﻿using System.Text;
-using Common.Outbox.Extensions;
+﻿using Common.Outbox.Extensions;
 using Dapper;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -85,11 +84,11 @@ public sealed class EventSaverService : BackgroundService
         }
 
         var queryPublished = publishedEventsToSave.Length == 0 ? string.Empty
-            : $"{QueryPublishedPartial}{ConcatGuids(publishedEventsToSave.Select(_ => _.Id))});";
+            : $"{QueryPublishedPartial}{Utils.ConcatGuids(publishedEventsToSave.Select(_ => _.Id))});";
 
         var queryErrorOnPublishing = errorOnPublishingEventsToSave.Length == 0
             ? string.Empty
-            : $"{QueryErrorOnPublishingPartial}{ConcatGuids(errorOnPublishingEventsToSave.Select(_ => _.Id))});";
+            : $"{QueryErrorOnPublishingPartial}{Utils.ConcatGuids(errorOnPublishingEventsToSave.Select(_ => _.Id))});";
 
         var commandParams = new
         {
@@ -124,21 +123,4 @@ public sealed class EventSaverService : BackgroundService
                                                     ""ExpirationDate"" = @ExpireDateError
                                                 WHERE ""Id"" IN (";
     #endregion
-
-    private static string ConcatGuids(IEnumerable<Guid> guids)
-    {
-        var stringBuilder = new StringBuilder();
-        var guidArray = guids as Guid[] ?? guids.ToArray();
-        var maxIndex = guidArray.Length - 1;
-        for (var i = 0; i < guidArray.Length; i++)
-        {
-            stringBuilder.Append('\'');
-            stringBuilder.Append(guidArray[i]);
-            stringBuilder.Append('\'');
-            if (i != maxIndex)
-                stringBuilder.Append(',');
-        }
-
-        return stringBuilder.ToString();
-    }
 }
