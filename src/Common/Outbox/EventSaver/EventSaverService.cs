@@ -1,4 +1,4 @@
-﻿using System.Timers;
+﻿using Common.Outbox.Base;
 using Common.Outbox.Extensions;
 using Dapper;
 using Microsoft.Extensions.Hosting;
@@ -14,7 +14,7 @@ public sealed class EventSaverService : BackgroundService
     private readonly List<OutboxEvent> _publishedEvents;
     private readonly List<OutboxEvent> _errorOnPublishingEvents;
     private readonly object _outboxEventsLock;
-    private readonly PeriodicTimer _checkItemsToSaveInterval;
+    private readonly DelayableTimer _checkItemsToSaveInterval;
 
     public EventSaverService(
         IOutboxEventSaveQueue saveQueue,
@@ -27,7 +27,7 @@ public sealed class EventSaverService : BackgroundService
         _publishedEvents = new List<OutboxEvent>(10200);
         _errorOnPublishingEvents = new List<OutboxEvent>(10200);
         _outboxEventsLock = new object();
-        _checkItemsToSaveInterval = new PeriodicTimer(TimeSpan.FromMinutes(1));
+        _checkItemsToSaveInterval = new DelayableTimer(TimeSpan.FromMinutes(1));
     }
 
     protected override Task ExecuteAsync(CancellationToken stoppingToken)
@@ -78,6 +78,7 @@ public sealed class EventSaverService : BackgroundService
         lock (_outboxEventsLock)
         {
             if (_publishedEvents.Count == 0 && _errorOnPublishingEvents.Count == 0) return;
+            _checkItemsToSaveInterval.Delay();
             publishedEventsToSave = _publishedEvents.ToArray();
             errorOnPublishingEventsToSave = _errorOnPublishingEvents.ToArray();
             _publishedEvents.Clear();
