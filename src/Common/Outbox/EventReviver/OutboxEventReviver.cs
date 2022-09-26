@@ -23,13 +23,13 @@ public sealed class OutboxEventReviver : BackgroundService
         _databaseConnection = databaseConnection;
         _retryQueue = retryQueue;
         _logger = logger;
-        _timerToCheckDatabase = new PeriodicTimer(TimeSpan.FromMinutes(3));
+        _timerToCheckDatabase = new PeriodicTimer(TimeSpan.FromMinutes(1));
         _timerToCleanDatabase = new PeriodicTimer(TimeSpan.FromHours(1));
     }
 
     protected override Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("Started monitoring events to revive {CurrentTime}", DateTime.Now);
+        _logger.LogInformation("{CurrentTime}: Started monitoring events to revive", DateTime.UtcNow);
         return Task.WhenAny(CheckTheDatabaseForEventsToPublish(stoppingToken), CleanOldEvents(stoppingToken))
             .ReturnExceptions();
     }
@@ -39,47 +39,46 @@ public sealed class OutboxEventReviver : BackgroundService
         while (!ctx.IsCancellationRequested)
         {
             await _timerToCheckDatabase.WaitForNextTickAsync(ctx);
-            var command = new CommandDefinition($"{CountEventsToPublishQuery} {GetEventsToPublishQuery}", cancellationToken: ctx);
-
-            var totalEventCount = 0;
-            var eventsRevived = await _databaseConnection.WithConnection<IEnumerable<OutboxEvent>?>(async conn =>
-            {
-                var gridReader = await conn.QueryMultipleAsync(command);
-                totalEventCount = await gridReader.ReadSingleAsync<int>();
-                return totalEventCount == 0 ? null : (await gridReader.ReadAsync<OutboxEvent>()).AsList();
-            });
-
-            if (totalEventCount == 0) continue;
-            await ReenqueeEvents(eventsRevived!, totalEventCount, ctx);
+            await ReEnqueueEvents(ctx);
         }
     }
 
-    private async Task ReenqueeEvents(IEnumerable<OutboxEvent> eventsRevived, int totalEventCount, CancellationToken ctx)
+    // TODO: save last retries in memory to not repeat it for 5 minutes
+    private async Task ReEnqueueEvents(CancellationToken ctx)
     {
-        foreach (var outboxEvent in eventsRevived)
-            await _retryQueue.Enqueue(outboxEvent, ctx);
-
-        if(totalEventCount < MaxEventsFetched) return;
-
-        // If there are more events on database keep getting it
-        var currentEventCount = 0;
+        var totalEventsRevived = 0;
+        var getMore = false;
+        var offset = 0;
         do
         {
-            var command = new CommandDefinition(GetEventsToPublishQuery, cancellationToken: ctx);
+            var parameters = new
+            {
+                MaxEventsFetched,
+                OffSet = offset
+            };
+            var command = new CommandDefinition(GetEventsToPublishQuery, parameters, cancellationToken: ctx);
             var currentEventsRevived = await _databaseConnection
-                .WithConnection<IEnumerable<OutboxEvent>?>(async conn =>
+                .WithConnection<List<OutboxEvent>?>(async conn =>
                     (await conn.QueryAsync<OutboxEvent>(command)).AsList());
 
             // An error has occurred on database level
             if (currentEventsRevived is null)
+            {
+                _logger.LogError("{CurrentTime}: Events stopped to be revived due database error", DateTime.UtcNow);
                 break;
+            }
 
-            var enumeratedCurrentEvents = currentEventsRevived as List<OutboxEvent> ?? currentEventsRevived.ToList();
-            currentEventCount = enumeratedCurrentEvents.Count;
+            foreach (var @event in currentEventsRevived)
+                await _retryQueue.Enqueue(@event, ctx);
 
-            foreach (var outboxEvent in enumeratedCurrentEvents)
-                await _retryQueue.Enqueue(outboxEvent, ctx);
-        } while (currentEventCount == MaxEventsFetched);
+            totalEventsRevived += currentEventsRevived.Count;
+            offset += MaxEventsFetched;
+
+            if (currentEventsRevived.Count < MaxEventsFetched)
+                getMore = false;
+        } while (getMore);
+
+        _logger.LogInformation("{CurrentTime}: Events revived: {Count}", DateTime.UtcNow, totalEventsRevived);
     }
 
     private async Task CleanOldEvents(CancellationToken ctx)
@@ -91,24 +90,15 @@ public sealed class OutboxEventReviver : BackgroundService
             var command = new CommandDefinition(CleanOldEventsQuery, new {CurrentDate = DateTime.UtcNow},
                 cancellationToken: ctx);
 
-            await _databaseConnection.WithConnection(conn => conn.ExecuteAsync(command));
+            var cleanedCount =await _databaseConnection.WithConnection(conn => conn.ExecuteAsync(command));
+
+            _logger.LogInformation("{CurrentTime}: Events cleaned: {Count}", DateTime.UtcNow, cleanedCount);
 
             await _timerToCleanDatabase.WaitForNextTickAsync(ctx);
         }
     }
 
     #region Queries
-
-    private const string CountEventsToPublishQuery = @"
-                        SELECT 
-	                        COUNT(""Id"")
-                        FROM 
-                            ""OutboxEvents""
-                        WHERE 
-                            ""Status"" = 1
-                            OR
-                            (""Status"" = 3 AND ""Retries"" < 15)
-                       ";
 
     private const string GetEventsToPublishQuery = @"
                         SELECT 
@@ -119,8 +109,9 @@ public sealed class OutboxEventReviver : BackgroundService
                             ""Status"" = 1
                             OR
                             (""Status"" = 3 AND ""Retries"" < 15)
-                        LIMIT 10000
-                       ";
+                        ORDER BY ""EventDate"" ASC
+                        LIMIT @MaxEventsFetched
+                        OFFSET @OffSet";
 
     private const string CleanOldEventsQuery = @"DELETE FROM ""OutboxEvents"" WHERE ""ExpirationDate"" < @CurrentDate;";
 
