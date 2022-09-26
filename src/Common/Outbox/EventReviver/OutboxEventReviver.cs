@@ -13,7 +13,9 @@ public sealed class OutboxEventReviver : BackgroundService
     private readonly ILogger<OutboxEventReviver> _logger;
     private readonly PeriodicTimer _timerToCheckDatabase;
     private readonly PeriodicTimer _timerToCleanDatabase;
+    private readonly List<EventsRevivedItem> _justRevivedEvents;
     private const int MaxEventsFetched = 10_000;
+    private const string JustRevivedQueryKey = "JUST_REVIVED_QUERY";
 
     public OutboxEventReviver(
         IDatabaseConnection databaseConnection,
@@ -23,8 +25,9 @@ public sealed class OutboxEventReviver : BackgroundService
         _databaseConnection = databaseConnection;
         _retryQueue = retryQueue;
         _logger = logger;
-        _timerToCheckDatabase = new PeriodicTimer(TimeSpan.FromMinutes(1));
+        _timerToCheckDatabase = new PeriodicTimer(TimeSpan.FromMinutes(5));
         _timerToCleanDatabase = new PeriodicTimer(TimeSpan.FromHours(1));
+        _justRevivedEvents = new List<EventsRevivedItem>();
     }
 
     protected override Task ExecuteAsync(CancellationToken stoppingToken)
@@ -43,7 +46,6 @@ public sealed class OutboxEventReviver : BackgroundService
         }
     }
 
-    // TODO: save last retries in memory to not repeat it for 5 minutes
     private async Task ReEnqueueEvents(CancellationToken ctx)
     {
         var totalEventsRevived = 0;
@@ -54,9 +56,11 @@ public sealed class OutboxEventReviver : BackgroundService
             var parameters = new
             {
                 MaxEventsFetched,
-                OffSet = offset
+                OffSet = offset,
+                MinRecoverDate = DateTime.UtcNow.Add(-1 * TimeSpan.FromMinutes(5))
             };
-            var command = new CommandDefinition(GetEventsToPublishQuery, parameters, cancellationToken: ctx);
+            var query = GetEventsToPublishQueryFilteringJustRevivedEvents();
+            var command = new CommandDefinition(query, parameters, cancellationToken: ctx);
             var currentEventsRevived = await _databaseConnection
                 .WithConnection<List<OutboxEvent>?>(async conn =>
                     (await conn.QueryAsync<OutboxEvent>(command)).AsList());
@@ -64,7 +68,7 @@ public sealed class OutboxEventReviver : BackgroundService
             // An error has occurred on database level
             if (currentEventsRevived is null)
             {
-                _logger.LogError("{CurrentTime}: Events stopped to be revived due database error", DateTime.UtcNow);
+                _logger.LogError("{CurrentTime}: Events stopped to be revived due to database error", DateTime.UtcNow);
                 break;
             }
 
@@ -74,11 +78,35 @@ public sealed class OutboxEventReviver : BackgroundService
             totalEventsRevived += currentEventsRevived.Count;
             offset += MaxEventsFetched;
 
+            // Save the revived events on memory to avoid retrying them for five minutes
+            SaveRevivedIdsInMemory(currentEventsRevived.Select(_ => _.Id));
+
             if (currentEventsRevived.Count < MaxEventsFetched)
                 getMore = false;
         } while (getMore);
 
         _logger.LogInformation("{CurrentTime}: Events revived: {Count}", DateTime.UtcNow, totalEventsRevived);
+    }
+
+    private List<Guid> GetEventsJustRevived()
+    {
+        var justRevived = new List<Guid>();
+        var currentTime = DateTime.UtcNow;
+        foreach (var item in _justRevivedEvents.ToArray())
+        {
+            if (item.ExpireDate > currentTime)
+                justRevived.AddRange(item.Ids);
+            else // If the item is old, remove from the list
+                _justRevivedEvents.Remove(item);
+        }
+
+        return justRevived;
+    }
+
+    private void SaveRevivedIdsInMemory(IEnumerable<Guid> revivedIds)
+    {
+        var item = new EventsRevivedItem(revivedIds.ToArray(), DateTime.UtcNow.AddMinutes(5));
+        _justRevivedEvents.Add(item);
     }
 
     private async Task CleanOldEvents(CancellationToken ctx)
@@ -100,15 +128,28 @@ public sealed class OutboxEventReviver : BackgroundService
 
     #region Queries
 
-    private const string GetEventsToPublishQuery = @"
+    private string GetEventsToPublishQueryFilteringJustRevivedEvents()
+    {
+        var justRevivedEventsIds = GetEventsJustRevived();
+        var idsQuery = justRevivedEventsIds.Count > 0 ?
+            $@"AND (""Id"" NOT IN ({Utils.ConcatGuidsToQueryString(justRevivedEventsIds)}))" :
+            string.Empty;
+        var getEventsQuery = GetEventsToPublishPartialQuery.Replace(JustRevivedQueryKey, idsQuery);
+        return getEventsQuery;
+    }
+
+    private const string GetEventsToPublishPartialQuery = @"
                         SELECT 
 	                        ""Id"", ""EventKey"", ""EventData""
                         FROM 
                             ""OutboxEvents""
                         WHERE 
-                            ""Status"" = 1
+                            (
+                                (""Status"" = 1 AND ""EventDate"" < @MinRecoverDate)
                             OR
-                            (""Status"" = 3 AND ""Retries"" < 15)
+                                (""Status"" = 3 AND ""Retries"" < 15 AND ""LastRetryDate"" < @MinRecoverDate) 
+                            )
+                            JUST_REVIVED_QUERY
                         ORDER BY ""EventDate"" ASC
                         LIMIT @MaxEventsFetched
                         OFFSET @OffSet";
@@ -117,3 +158,5 @@ public sealed class OutboxEventReviver : BackgroundService
 
     #endregion
 }
+
+public record EventsRevivedItem(Guid[] Ids,  DateTime ExpireDate);

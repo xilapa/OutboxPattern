@@ -1,4 +1,5 @@
-﻿using Common.Outbox.Extensions;
+﻿using System.Timers;
+using Common.Outbox.Extensions;
 using Dapper;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -84,11 +85,11 @@ public sealed class EventSaverService : BackgroundService
         }
 
         var queryPublished = publishedEventsToSave.Length == 0 ? string.Empty
-            : $"{QueryPublishedPartial}{Utils.ConcatGuids(publishedEventsToSave.Select(_ => _.Id))});";
+            : $"{QueryPublishedPartial}{Utils.ConcatGuidsToQueryString(publishedEventsToSave.Select(_ => _.Id))});";
 
         var queryErrorOnPublishing = errorOnPublishingEventsToSave.Length == 0
             ? string.Empty
-            : $"{QueryErrorOnPublishingPartial}{Utils.ConcatGuids(errorOnPublishingEventsToSave.Select(_ => _.Id))});";
+            : $"{QueryErrorOnPublishingPartial}{Utils.ConcatGuidsToQueryString(errorOnPublishingEventsToSave.Select(_ => _.Id))});";
 
         var commandParams = new
         {

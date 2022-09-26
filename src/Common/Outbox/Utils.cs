@@ -4,7 +4,7 @@ namespace Common.Outbox;
 
 public static class Utils
 {
-    public static string ConcatGuids(IEnumerable<Guid> guids)
+    public static string ConcatGuidsToQueryString(IEnumerable<Guid> guids)
     {
         var stringBuilder = new StringBuilder();
         var guidArray = guids as Guid[] ?? guids.ToArray();
