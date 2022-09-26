@@ -62,16 +62,13 @@ public abstract class BaseEventPublisher : BackgroundService
             // The client is auto-recovering
             if (Channel!.IsClosed)
             {
-                _logger.LogError("{CurrentTime}: Channel closed, current message Id: {MessageId}",
-                    DateTime.UtcNow, @event.Id);
-                if (!_eventsPendingConfirmation.IsEmpty) _eventsPendingConfirmation.Clear();
-                await SaveQueue.Enqueue(@event, cancellationToken);
-                await Task.Delay(300, cancellationToken);
-                continue;
+                var stillClosed = await ClosedChannelShortCircuit(@event);
+                if (stillClosed) continue;
             }
 
             try
             {
+                // TODO: PublishEvent returns if the event was published or not and the add the key to dictionary
                 var publishingKey = new PublishingKey(Channel.ChannelNumber, Channel.NextPublishSeqNo);
                 await _eventsPendingConfirmation.AddWithRetries(publishingKey, @event, _logger);
                 await PublishEvent(@event);
@@ -87,6 +84,19 @@ public abstract class BaseEventPublisher : BackgroundService
                 await RecoverFromFailure(@event);
             }
         }
+    }
+
+    // Await 300ms to check if channel has auto-recovered.
+    // Returns true if the channel still closed.
+    private async Task<bool> ClosedChannelShortCircuit(OutboxEvent @event)
+    {
+        await Task.Delay(300, CancellationToken);
+        if (Channel?.IsOpen is true) return false;
+        _logger.LogError("{CurrentTime}: Channel closed, current message Id: {MessageId}",
+            DateTime.UtcNow, @event.Id);
+        if (!_eventsPendingConfirmation.IsEmpty) _eventsPendingConfirmation.Clear();
+        await SaveQueue.Enqueue(@event, CancellationToken);
+        return true;
     }
 
     protected abstract Task PublishEvent(OutboxEvent @event);
@@ -221,6 +231,8 @@ public abstract class BaseEventPublisher : BackgroundService
         var eventFound = _eventsPendingConfirmation.TryRemove(key, out var @event);
         if (!eventFound || @event is null) return;
         RedirectNackMessage(@event);
+        // TODO: Save acks in memory to avoid re-publishing and reduce the min time to revive unpublished messages to 1min
+        // It'll be needed to clear the in memory storage periodically
     }
 
     protected abstract void RedirectNackMessage(OutboxEvent @event);
