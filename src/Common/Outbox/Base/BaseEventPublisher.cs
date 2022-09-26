@@ -64,7 +64,9 @@ public abstract class BaseEventPublisher : BackgroundService
             {
                 _logger.LogError("{CurrentTime}: Channel closed, current message Id: {MessageId}",
                     DateTime.UtcNow, @event.Id);
+                if (!_eventsPendingConfirmation.IsEmpty) _eventsPendingConfirmation.Clear();
                 await SaveQueue.Enqueue(@event, cancellationToken);
+                await Task.Delay(300, cancellationToken);
                 continue;
             }
 
