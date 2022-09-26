@@ -27,11 +27,11 @@ public sealed class OutboxEventPublisher : BaseEventPublisher
         _senderSettings = senderSettings.Value;
     }
 
-    protected override Task PublishEvent(OutboxEvent @event)
+    protected override Task<bool> PublishEvent(OutboxEvent @event)
     {
         var body = JsonSerializer.SerializeToUtf8Bytes(@event.EventData);
         Channel!.BasicPublish(_senderSettings.Exchange, @event.EventKey, true, DefaultMessageProperties, body);
-        return Task.CompletedTask;
+        return Task.FromResult(true);
     }
 
     protected override void RedirectNackMessage(OutboxEvent @event)

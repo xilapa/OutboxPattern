@@ -23,13 +23,13 @@ public sealed class OutboxEventRetryPublisher : BaseEventPublisher
         _senderSettings = senderSettings.Value;
     }
 
-    protected override async Task PublishEvent(OutboxEvent @event)
+    protected override async Task<bool> PublishEvent(OutboxEvent @event)
     {
         // If it reached the maximum retries, just save it
         if (@event.CurrentRetries >= 2)
         {
             await SaveQueue.Enqueue(@event, CancellationToken);
-            return;
+            return false;
         }
 
         await DelayPublishing(@event);
@@ -38,6 +38,7 @@ public sealed class OutboxEventRetryPublisher : BaseEventPublisher
 
         // Increment the current retry count, to avoid infinity looping messages
         @event.IncrementRetryCount();
+        return true;
     }
 
     private static async Task DelayPublishing(OutboxEvent outboxEvent)

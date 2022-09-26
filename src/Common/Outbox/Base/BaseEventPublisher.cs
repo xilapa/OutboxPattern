@@ -68,10 +68,10 @@ public abstract class BaseEventPublisher : BackgroundService
 
             try
             {
-                // TODO: PublishEvent returns if the event was published or not and the add the key to dictionary
+                var published = await PublishEvent(@event);
+                if (!published) continue;
                 var publishingKey = new PublishingKey(Channel.ChannelNumber, Channel.NextPublishSeqNo);
                 await _eventsPendingConfirmation.AddWithRetries(publishingKey, @event, _logger);
-                await PublishEvent(@event);
                 unchecked
                 {
                     totalPublishedMessages++;
@@ -99,7 +99,7 @@ public abstract class BaseEventPublisher : BackgroundService
         return true;
     }
 
-    protected abstract Task PublishEvent(OutboxEvent @event);
+    protected abstract Task<bool> PublishEvent(OutboxEvent @event);
 
     private IModel? GetConfiguredChannel()
     {
