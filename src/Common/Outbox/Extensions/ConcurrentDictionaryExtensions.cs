@@ -16,16 +16,31 @@ public static class ConcurrentDictionaryExtensions
             {
                 dict.TryAdd(key, value);
             }
-            catch (OverflowException)
+            catch (Exception e)
             {
                 retry = true;
                 retries++;
-                logger.LogError("Internal dictionary is too big! Cant add more messages. Current try {Retries}", retries);
+                logger.LogError("{CurrentTime}: Internal dictionary is too big! Cant add more messages. Current try: {Retries}", DateTime.UtcNow, retries);
 
-                if (retries > maxRetries) throw;
+                if (retries > maxRetries) throw new ConcurrentDicitionaryException("Concurrent dictionary failed. See inner exception for details", e);
 
                 await Task.Delay(100);
             }
         } while (retry);
+    }
+}
+
+public class ConcurrentDicitionaryException : Exception
+{
+    public ConcurrentDicitionaryException() : base()
+    {
+    }
+
+    public ConcurrentDicitionaryException(string? message) : base(message)
+    {
+    }
+
+    public ConcurrentDicitionaryException(string? message, Exception? innerException) : base(message, innerException)
+    {
     }
 }

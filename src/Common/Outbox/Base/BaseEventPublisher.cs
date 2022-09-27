@@ -18,7 +18,7 @@ public abstract class BaseEventPublisher : BackgroundService
     protected IModel? Channel;
     protected CancellationToken CancellationToken;
 
-    private readonly ConcurrentDictionary<PublishingKey, OutboxEvent> _eventsPendingConfirmation;
+    private ConcurrentDictionary<PublishingKey, OutboxEvent> _eventsPendingConfirmation;
     private readonly IChannelFactory _channelFactory;
     private readonly IBaseQueueReader _listenQueue;
     private readonly ILogger _logger;
@@ -77,6 +77,10 @@ public abstract class BaseEventPublisher : BackgroundService
                     totalPublishedMessages++;
                 }
             }
+            catch (ConcurrentDicitionaryException)
+            {
+                await RecoverFromConcurrentDictionaryFailure(@event);
+            }
             catch (Exception e)
             {
                 _logger.LogError(e,"{CurrentTime}: Error on publishing, current message Id: {MessageId}",
@@ -121,6 +125,41 @@ public abstract class BaseEventPublisher : BackgroundService
 
     # region Failure Recovery
 
+    private async Task RecoverFromConcurrentDictionaryFailure(OutboxEvent @event)
+    {
+        _logger.LogCritical("{CurrentTime}: Starting concurrent dictionary recovery", DateTime.UtcNow);
+        bool dictionaryStillWork;
+        try
+        {
+            // try to interact with the dictionary
+            var someKey = _eventsPendingConfirmation.Keys.First();
+            _eventsPendingConfirmation.TryGetValue(someKey, out _);
+            dictionaryStillWork = true;
+        }
+        catch
+        {
+            dictionaryStillWork = false;
+        }
+
+        // if the dictionary works, just wait some time to some ack or nack remove an item from it
+        if (dictionaryStillWork)
+        {
+            _logger.LogCritical("{CurrentTime}: Concurrent dictionary still works, waiting 300ms expecting to room to be available", DateTime.UtcNow);
+            await Task.Delay(300, CancellationToken);
+        }
+        else
+        {
+            // if the dictionary doesn't work, send the events to save and replace the dictionary with a new one
+            await RedirectEventsDueFailure(SaveQueue, @event);
+            var lockObject = new object();
+            lock (lockObject)
+            {
+                _logger.LogCritical("{CurrentTime}: Concurrent dictionary doesn't work, will be replaced by a new one", DateTime.UtcNow);
+                _eventsPendingConfirmation = new ConcurrentDictionary<PublishingKey, OutboxEvent>();
+            }
+        }
+    }
+
     private void TryDisposeChannel()
     {
         try
@@ -161,9 +200,7 @@ public abstract class BaseEventPublisher : BackgroundService
             return;
         }
 
-        // If the channel is open and has an event to recovery, it could be:
-        // - a problem with the concurrent dictionary used to track the published events
-        // - or a problem with the event itself
+        // If the channel is open and has an event to recovery, it could be a problem with the event itself
         if (Channel.IsOpen)
         {
             _logger.LogWarning("{CurrentTime}: The channel is open, sending message {EventId} to retry queue",
@@ -231,8 +268,6 @@ public abstract class BaseEventPublisher : BackgroundService
         var eventFound = _eventsPendingConfirmation.TryRemove(key, out var @event);
         if (!eventFound || @event is null) return;
         RedirectNackMessage(@event);
-        // TODO: Save acks in memory to avoid re-publishing and reduce the min time to revive unpublished messages to 1min
-        // It'll be needed to clear the in memory storage periodically
     }
 
     protected abstract void RedirectNackMessage(OutboxEvent @event);
