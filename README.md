@@ -3,7 +3,7 @@ An outbox pattern implementation using EF Core and RabbitMQ with publish confirm
 
 This implementation of the outbox pattern is a proof of concept of a resilient system with asynchronous communication between its moving parts ("actors") being made between messages.
 
-The communication between the "Actors", in this case background services, are made using dotnet channels. The base implementation resides on Common/Outbox folder and has four background services ("actors") for:
+The communication between the "Actors", in this case background services, are made using dotnet channels. The base implementation resides on Common/Outbox folder and has four background services ("actors") for :
 - Publishing messages that has just been created;
 - Retrying publish nacked/failed messages;
 - Querying the failed/unpublished messages from database;
