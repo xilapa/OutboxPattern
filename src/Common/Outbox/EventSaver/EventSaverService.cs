@@ -103,8 +103,8 @@ public sealed class EventSaverService : BackgroundService
         await _databaseConnection.WithConnection(conn =>
             conn.ExecuteAsync($"{queryPublished} {queryErrorOnPublishing}", commandParams));
 
-        _logger.LogInformation("Events updated in database Success: {SuccessCount} - Error: {ErrorCount}",
-            publishedEventsToSave.Length, errorOnPublishingEventsToSave.Length);
+        _logger.LogInformation("{CurrentTime}: Events updated in database Success: {SuccessCount} - Error: {ErrorCount}",
+            DateTime.UtcNow, publishedEventsToSave.Length, errorOnPublishingEventsToSave.Length);
     }
 
     #region PartialQueries
