@@ -3,8 +3,7 @@ using System.Linq;
 using System.Reflection;
 using Common.Messaging;
 using FluentAssertions;
-using Moq;
-using RabbitMQ.Client;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace Common.UnitTests;
@@ -15,10 +14,15 @@ public sealed class ChannelFactoryTests
     public void ChannelFactoryUsesDisposableObjectPoolInternally()
     {
         // Arrange
-        var mockConnection = new Mock<IConnection>();
-        
+        var rabbitSettings = new RabbitMqSettings
+        {
+            HostName = "localhost",
+            UserName = "guest",
+            Password = "guest"
+        };
+
         // Act
-        var channelFactory = new ChannelFactory(mockConnection.Object);
+        var channelFactory = new ChannelFactory(new FakeOption<RabbitMqSettings>(rabbitSettings));
         var internalPoolFieldInfo = channelFactory
             .GetType()
             .GetFields(BindingFlags.Instance | BindingFlags.NonPublic)
@@ -28,4 +32,13 @@ public sealed class ChannelFactoryTests
         // Assert
         (internalPool! is IDisposable).Should().BeTrue();
     }
+}
+
+public class FakeOption<T> : IOptions<T> where T: class
+{
+    public FakeOption(T value)
+    {
+        Value = value;
+    }
+    public T Value { get; }
 }

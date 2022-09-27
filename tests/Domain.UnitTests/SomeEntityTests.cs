@@ -1,8 +1,5 @@
-﻿using Common;
-using Common.Persistence;
-using Domain.Entities;
+﻿using Domain.Entities;
 using Domain.Events;
-using Domain.Outbox;
 using FluentAssertions;
 using Xunit;
 
@@ -17,14 +14,17 @@ public sealed class SomeEntityTests
         var someEntity = new SomeEntity("test");
         
         // Assert
-        var @event = someEntity.BaseEvents.First(_ => _ is SomeEntityCreated);
+        var @event = someEntity.DomainEvents.First(_ => _ is SomeEntityCreated);
 
         (@event is SomeEntityCreated).Should().BeTrue();
-        
-        if(@event is SomeEntityCreated someEntityCreated)
+
+        if (@event is not SomeEntityCreated someEntityCreated)
         {
-            someEntityCreated.CreatedEntityId.Should().Be(someEntity.Id);
-            someEntityCreated.CreatedEntityName.Should().Be(someEntity.Name);
+            Assert.Fail("SomeEntityCreated was not created");
+            return;
         }
+        
+        someEntityCreated.CreatedEntityId.Should().Be(someEntity.Id);
+        someEntityCreated.CreatedEntityName.Should().Be(someEntity.Name);
     }
 }
