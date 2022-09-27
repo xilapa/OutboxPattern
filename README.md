@@ -54,7 +54,7 @@ dotnet run --project "src\Sender"
 `
 
 ## Some numbers
-Tests made with an  i7-10510U:
+Tests made with an i7-10510U with local RabbitMq and Postgres instances:
 - The time to publish 50k artificial messages is 14s (without simulating requests, just creating and publishing the messages);
 - Simulating ASP .NET requests, it can publish 50k messages in 2 minutes and 14s (the bottleneck is on the request side).
 
