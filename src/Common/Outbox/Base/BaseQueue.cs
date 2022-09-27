@@ -31,7 +31,6 @@ public abstract class BaseQueue : IBaseQueue
     public async ValueTask<bool> TryEnqueue(OutboxEvent @event, CancellationToken cancellationToken)
     {
         var currentCount = _queue.Reader.Count;
-        // TODO: make this available capacity window configurable
         if (currentCount > _capacity - 1_000)
         {
             _logger.LogWarning("{CurrentTime} Event not enqueued, queue is under heavy load, current count: {Count}",DateTime.UtcNow, _queue.Reader.Count);

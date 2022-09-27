@@ -95,7 +95,6 @@ public sealed class EventSaverService : BackgroundService
         var commandParams = new
         {
             Date = DateTime.UtcNow,
-            // todo: make these events expirations configurable
             ExpireDateSuccess = DateTime.UtcNow.AddHours(3),
             ExpireDateError = DateTime.UtcNow.AddDays(2)
         };
