@@ -27,11 +27,24 @@ public static class SetupDependencyInjection
         });
         return serviceProvider;
     }
+
+    public static IServiceProvider DeclareQueueAndBind(this IServiceProvider serviceProvider, Type messageType,
+        QueueDefinition queueDefinition)
+    {
+        var channelFactory = serviceProvider.GetRequiredService<IChannelFactory>();
+        channelFactory.WithChannel(channel =>
+        {
+            channel.QueueDeclare(messageType.Name, durable: queueDefinition.Durable, exclusive: queueDefinition.Exclusive,
+                autoDelete: queueDefinition.AutoDelete);
+            channel.QueueBind(messageType.Name, queueDefinition.ExchangeToBind,messageType.Name);
+        });
+        return serviceProvider;
+    }
 }
 
 public sealed class ExchangeDefinition
 {
-    public string? Name { get; set; }
+    public string Name { get; set; }
     public ExchangeType Type { get; set; }
     public bool Durable { get; set; }
     public bool AutoDelete { get; set; }
@@ -53,4 +66,12 @@ public enum ExchangeType
     Fanout,
     Headers,
     Topic
+}
+
+public sealed class QueueDefinition
+{
+    public string ExchangeToBind { get; set; }
+    public bool Durable { get; set; }
+    public bool AutoDelete { get; set; }
+    public bool Exclusive { get; set; }
 }
