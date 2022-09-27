@@ -17,7 +17,7 @@ var host = new HostBuilder()
     .ConfigureDefaults(args)
     .ConfigureHostConfiguration(configurationBuilder =>
         configurationBuilder
-            .SetBasePath(Directory.GetCurrentDirectory())
+            .SetBasePath(AppContext.BaseDirectory)
             .AddEnvironmentVariables(prefix: "DOTNET_")
             .AddCommandLine(args)
     )
@@ -25,6 +25,7 @@ var host = new HostBuilder()
     {
         var env = hostContext.HostingEnvironment;
         configurationBuilder
+            .SetBasePath(AppContext.BaseDirectory)
             .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
             .AddJsonFile($"appsettings.{env.EnvironmentName}.json", optional: true, reloadOnChange: true)
             .AddEnvironmentVariables(prefix: "DOTNET_")
