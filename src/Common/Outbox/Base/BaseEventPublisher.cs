@@ -22,6 +22,7 @@ public abstract class BaseEventPublisher : BackgroundService
     private readonly IChannelFactory _channelFactory;
     private readonly IBaseQueueReader _listenQueue;
     private readonly ILogger _logger;
+    private bool _connectionWasClosed;
 
     protected BaseEventPublisher(
         IChannelFactory channelFactory,
@@ -58,10 +59,17 @@ public abstract class BaseEventPublisher : BackgroundService
                     DateTime.UtcNow, totalPublishedMessages);
             }
 
+            if (_connectionWasClosed && Channel!.IsOpen)
+            {
+                _connectionWasClosed = false;
+                _logger.LogInformation("{CurrentTime}: Connection reestablished with the broker", DateTime.UtcNow);
+            }
+
             // If the channel is closed save the status on the database
             // The client is auto-recovering
             if (Channel!.IsClosed)
             {
+                _connectionWasClosed = true;
                 var stillClosed = await ClosedChannelShortCircuit(@event);
                 if (stillClosed) continue;
             }
