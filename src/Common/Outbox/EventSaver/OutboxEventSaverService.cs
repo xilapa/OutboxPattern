@@ -1,39 +1,37 @@
-﻿using Common.Outbox.Base;
-using Common.Outbox.Extensions;
-using Dapper;
+﻿using Dapper;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Npgsql;
 
 namespace Common.Outbox.EventSaver;
 
-public sealed class EventSaverService : BackgroundService
+public sealed class OutboxEventSaverService : BackgroundService
 {
     private readonly IOutboxEventSaveQueue _saveQueue;
-    private readonly IDatabaseConnection _databaseConnection;
-    private readonly ILogger<EventSaverService> _logger;
+    private readonly SenderSettings _senderSettings;
+    private readonly ILogger<OutboxEventSaverService> _logger;
     private readonly List<OutboxEvent> _publishedEvents;
     private readonly List<OutboxEvent> _errorOnPublishingEvents;
     private readonly object _outboxEventsLock;
-    private readonly DelayableTimer _checkItemsToSaveInterval;
 
-    public EventSaverService(
+    public OutboxEventSaverService(
         IOutboxEventSaveQueue saveQueue,
-        IDatabaseConnection databaseConnection,
-        ILogger<EventSaverService> logger)
+        IOptions<SenderSettings> senderSettings,
+        ILogger<OutboxEventSaverService> logger)
     {
         _saveQueue = saveQueue;
-        _databaseConnection = databaseConnection;
+        _senderSettings = senderSettings.Value;
         _logger = logger;
         _publishedEvents = new List<OutboxEvent>(10200);
         _errorOnPublishingEvents = new List<OutboxEvent>(10200);
         _outboxEventsLock = new object();
-        _checkItemsToSaveInterval = new DelayableTimer(TimeSpan.FromMinutes(1));
     }
 
     protected override Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation("{CurrentTime}: Started Listening for events to save", DateTime.UtcNow);
-        return Task.WhenAny(StartListeningAsync(stoppingToken), RecurringSaver(stoppingToken)).ReturnExceptions();
+        return Task.WhenAny(StartListeningAsync(stoppingToken), RecurringSaver(stoppingToken));
     }
 
     private async Task StartListeningAsync(CancellationToken cancellationToken)
@@ -64,7 +62,7 @@ public sealed class EventSaverService : BackgroundService
     {
         while (!cancellationToken.IsCancellationRequested)
         {
-            await _checkItemsToSaveInterval.WaitForNextTickAsync(cancellationToken);
+            await Task.Delay(TimeSpan.FromSeconds(60), cancellationToken);
             await SaveToDatabase();
         }
     }
@@ -78,19 +76,11 @@ public sealed class EventSaverService : BackgroundService
         lock (_outboxEventsLock)
         {
             if (_publishedEvents.Count == 0 && _errorOnPublishingEvents.Count == 0) return;
-            _checkItemsToSaveInterval.Delay();
             publishedEventsToSave = _publishedEvents.ToArray();
             errorOnPublishingEventsToSave = _errorOnPublishingEvents.ToArray();
             _publishedEvents.Clear();
             _errorOnPublishingEvents.Clear();
         }
-
-        var queryPublished = publishedEventsToSave.Length == 0 ? string.Empty
-            : $"{QueryPublishedPartial}{Utils.ConcatGuidsToQueryString(publishedEventsToSave.Select(_ => _.Id))});";
-
-        var queryErrorOnPublishing = errorOnPublishingEventsToSave.Length == 0
-            ? string.Empty
-            : $"{QueryErrorOnPublishingPartial}{Utils.ConcatGuidsToQueryString(errorOnPublishingEventsToSave.Select(_ => _.Id))});";
 
         var commandParams = new
         {
@@ -99,29 +89,34 @@ public sealed class EventSaverService : BackgroundService
             ExpireDateError = DateTime.UtcNow.AddDays(2)
         };
 
-        await _databaseConnection.WithConnection(conn =>
-            conn.ExecuteAsync($"{queryPublished} {queryErrorOnPublishing}", commandParams));
+        await using var connection = new NpgsqlConnection(_senderSettings.DatabaseConnectionString);
 
-        _logger.LogInformation("{CurrentTime}: Events updated in database Success: {SuccessCount} - Error: {ErrorCount}",
-            DateTime.UtcNow, publishedEventsToSave.Length, errorOnPublishingEventsToSave.Length);
-    }
-
-    #region PartialQueries
-    private const string QueryPublishedPartial = @"UPDATE ""OutboxEvents"" 
+        if (publishedEventsToSave.Length > 0)
+        {
+            await connection.ExecuteAsync($@"UPDATE ""OutboxEvents"" 
                                                 SET 
                                                 ""Status"" = 2,
                                                 ""Retries"" = ""Retries"" + 1,
                                                 ""LastRetryDate"" = @Date,
                                                 ""PublishingDate"" = @Date,
                                                 ""ExpirationDate"" = @ExpireDateSuccess
-                                                WHERE ""Id"" IN (";
+                                                WHERE ""Id"" IN ({Utils.ConcatGuidsToQueryString(publishedEventsToSave.Select(_ => _.Id))});",
+                commandParams);
+        }
 
-    private const string QueryErrorOnPublishingPartial = @"UPDATE ""OutboxEvents"" 
+        if (errorOnPublishingEventsToSave.Length > 0)
+        {
+            await connection.ExecuteAsync($@"UPDATE ""OutboxEvents"" 
                                                 SET 
                                                     ""Status"" = 3,
                                                     ""Retries"" = ""Retries"" + 1,
                                                     ""LastRetryDate"" = @Date,
                                                     ""ExpirationDate"" = @ExpireDateError
-                                                WHERE ""Id"" IN (";
-    #endregion
+                                                WHERE ""Id"" IN ({Utils.ConcatGuidsToQueryString(publishedEventsToSave.Select(_ => _.Id))});",
+                commandParams);
+        }
+
+        _logger.LogInformation("{CurrentTime}: Events updated in database Success: {SuccessCount} - Error: {ErrorCount}",
+            DateTime.UtcNow, publishedEventsToSave.Length, errorOnPublishingEventsToSave.Length);
+    }
 }

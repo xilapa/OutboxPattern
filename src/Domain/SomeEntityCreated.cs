@@ -1,6 +1,7 @@
-﻿using Domain.Entities;
+﻿namespace Domain;
 
-namespace Domain.Events;
+public abstract class DomainEvent
+{ }
 
 public sealed class SomeEntityCreated : DomainEvent
 {

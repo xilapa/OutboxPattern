@@ -12,6 +12,7 @@ public sealed class OutboxEvent
     public OutboxEvent(object @event)
     {
         Id = Guid.NewGuid();
+        // The message routing key will be it's type
         EventKey = @event.GetType().Name;
         EventData = JsonSerializer.Serialize(@event);
         EventDate = DateTime.UtcNow;
@@ -19,7 +20,6 @@ public sealed class OutboxEvent
         LastRetryDate = null;
         Status = PublishingStatus.NotPublished;
         Retries = 0;
-        CurrentRetries = 0;
         ExpirationDate = null;
     }
 
@@ -31,7 +31,6 @@ public sealed class OutboxEvent
     public DateTime? LastRetryDate { get; private set; }
     public PublishingStatus Status { get; private set; }
     public int Retries { get; private set; }
-    public int CurrentRetries { get; private set; }
     public DateTime? ExpirationDate { get; set; }
 
     public void SetPublishedStatus()
@@ -42,11 +41,6 @@ public sealed class OutboxEvent
     public void SetErrOnPublishStatus()
     {
         Status = PublishingStatus.ErrorOnPublish;
-    }
-
-    public void IncrementRetryCount()
-    {
-        CurrentRetries++;
     }
 }
 

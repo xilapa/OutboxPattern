@@ -1,5 +1,5 @@
 ﻿using Common.Persistence;
-using Domain.Entities;
+using Domain;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;

@@ -1,7 +1,6 @@
 ﻿using Common.Outbox;
 using Common.Outbox.EventPublisher;
-using Common.Outbox.Extensions;
-using Domain.Entities;
+using Domain;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
@@ -9,7 +8,7 @@ namespace Common.Persistence;
 
 public sealed class Context : DbContext
 {
-    private readonly IOutboxEventQueueWriter _outboxEventQueueWriter;
+    private readonly IOutboxEventQueue _outboxQueue;
     private readonly SenderSettings _senderSettings;
 
     // ctor for migration generation
@@ -22,9 +21,9 @@ public sealed class Context : DbContext
     //     };
     // }
 
-    public Context(IOptions<SenderSettings> senderSettings, IOutboxEventQueueWriter outboxEventQueueWriter)
+    public Context(IOptions<SenderSettings> senderSettings, IOutboxEventQueue outboxQueue)
     {
-        _outboxEventQueueWriter = outboxEventQueueWriter;
+        _outboxQueue = outboxQueue;
         _senderSettings = senderSettings.Value;
     }
 
@@ -33,8 +32,6 @@ public sealed class Context : DbContext
         base.OnModelCreating(modelBuilder);
         modelBuilder.Entity<SomeEntity>()
             .Ignore(_ => _.DomainEvents);
-        modelBuilder.Entity<OutboxEvent>()
-            .Ignore(_ => _.CurrentRetries);
     }
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
@@ -45,12 +42,32 @@ public sealed class Context : DbContext
 
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = new ())
     {
-        var outboxEvents =  this.GetOutboxEventsAndAddToTransaction();
+        // Create the outbox events
+        var outboxEvents = ChangeTracker
+            .Entries<BaseEntity>()
+            .Where(e => e.Entity.DomainEvents.Count != 0)
+            .SelectMany(e => e.Entity.DomainEvents)
+            .Select(domainEvent => new OutboxEvent(domainEvent))
+            .ToArray();
+
+        // Add them to the current transaction
+        foreach (var outboxEvent in outboxEvents)
+            Add(outboxEvent);
+
+        // Call the base Save changes
         var result = await base.SaveChangesAsync(cancellationToken);
-        await _outboxEventQueueWriter.EnqueueToOutbox(outboxEvents, cancellationToken);
+
+        // If the SaveChanges doesn't throw an exception this line will be called
+        // And will send the outbox events to be published without hitting the database again
+        foreach (var outboxEvent in outboxEvents)
+            await _outboxQueue.Enqueue(outboxEvent, cancellationToken);
+
         return result;
     }
 
     public DbSet<SomeEntity> SomeEntities { get; set; }
+    
+    
+    
     public DbSet<OutboxEvent> OutboxEvents { get; set; }
 }
